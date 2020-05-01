@@ -70,10 +70,206 @@
 
 	<build>
 		<plugins>
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-			</plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>pre integration test</id>
+            <goals>
+              <goal>start</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>post integration test</id>
+            <goals>
+              <goal>stop</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>1.6.0</version>
+        <!-- excutions 섹션은 npm 명령어의 상세내용을 추가하는 곳이다. -->
+        <executions>
+          <!-- exec-maven-plugin에게 npm install 명령어를 실행되도록 알려주는 execution 부분이다. -->
+          <execution>
+            <!-- <id> 전체 빌드 프로세스 중에서 해당 execution이 유일하게 구분될 수 있도록 지정 -->
+            <id>font-end install</id>
+            <goals>
+              <!-- <goal> exec-maven-plugin에게 <executable>에 명시된 npm이 외부 프로그램이라고 알려준다. -->
+              <goal>exec</goal>
+            </goals>
+            <!-- <phase> 메이븐에 해당 플러그인의 실행이 prepare-package 페이즈 동안 실행돼야 함을 알려준다. -->
+            <phase>prepare-package</phase>
+            <configuration>
+              <executable>npm</executable>
+              <!-- <argument> 섹션은 <executable>에 명시된 npm이 실행되는데 필요한 변수를 나타낸다. -->
+              <arguments>
+                <argument>install</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>font-end unit test</id>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <phase>prepare-package</phase>
+            <configuration>
+              <executable>npm</executable>
+              <arguments>
+                <!-- 두 개의 변수를 npm에 넘겨주기 때문에 이들을 <arguments> 부분에 나열 -->
+                <!-- 메이븐 3.0.3 이후로 다른 플러그인의 <execution>은 pom.xml에 나열된 순서대로 실행된다. -->
+                <argument>run</argument>
+                <argument>test:unit</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <!-- exec-maven-plugin이 prepare-package 페이즈 동안 npm run build 명령어를 실행 하기 위한 -->
+            <id>font-end build package</id>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <phase>prepare-package</phase>
+            <configuration>
+              <executable>npm</executable>
+              <arguments>
+                <argument>run</argument>
+                <argument>build</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <!-- exec-maven-plugin이 integration-test 페이즈 동안 npm run test:e2e 명령어를 실행 하기 위한 -->
+          <execution>
+            <id>front-end e2e test</id>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <phase>integration-test</phase>
+            <configuration>
+              <executable>npm</executable>
+              <arguments>
+                <argument>run</argument>
+                <argument>test:e2e</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
+        <configuration>
+          <!-- exec-maven-plugin에게 npm 명령어가 front-end/ 폴더에서 실행됨을 알려준다. -->
+          <workingDirectory>${basedir}/front-end</workingDirectory>
+        </configuration>
+      </plugin>
+      <!-- Maven Resources Plugin을 추가해서 프런트엔드의 빌드 결과를 src/main/resource 디텍터리에 복사 -->
+      <!-- 스프링부트는 HTML 템플릿 파일을 src/main/resources/templates 폴더에 놓고 정적 에셋을 src/main/resources/static 폴더에 놓기 때문에 -->
+      <!-- front-end/dist/index.html과 front-end/dist/static을 분리한 뒤 두개의 <execution> 섹션을 확용해서 복사해야 한다. -->
+      <plugin>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <!-- 다음 <execution> 섹션은 index.html 파일을 prepare-package 페이즈 동안 src/main/resources/template 폴더에 복사한다. -->
+          <!-- 두 개의 복사하는 <execution>을 prepare-package 페이즈에서 실행되도록 명시했기 때문에 메이븐이 프런트엔트 에셋을 JAR 패키지로 만들 것이라고 예상할 수 있다. -->
+          <!-- 사실 메이븐은 예상한 대로 동작한다. 하지만 mvn install 명령어를 두 번째 실행했을 때만 예상대로 동작한다. -->
+          <!-- 메이븐의 기본 라이프 사이클에는 초기화와 컴파일 페이즈 사이에 다음 네게의 또 다른 페이즈가 존재한다. -->
+          <!-- generate-sources, process-sources, generate-resources, process-resources -->
+          <execution>
+            <id>copy front-end template</id>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <phase>prepare-package</phase>
+            <configuration>
+              <outputDirectory>${basedir}/src/main/resources/templates</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>front-end/dist</directory>
+                  <includes>
+                    <include>index.html</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+          <execution>
+            <id>copy front-end assets</id>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <phase>prepare-package</phase>
+            <configuration>
+              <outputDirectory>${basedir}/src/main/resources/static</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>front-end/dist</directory>
+                  <!-- 이전 <execution> 섹션과의 유일한 차이는 복사하는 동안 index.html을 생략하는데 <excludes>를 사용한다 -->
+                  <excludes>
+                    <exclude>index.html</exclude>
+                  </excludes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+          <execution>
+            <id>copy front-end template to target</id>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <phase>prepare-package</phase>
+            <configuration>
+              <outputDirectory>${basedir}/target/classes/templates</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>front-end/dist</directory>
+                  <includes>
+                    <include>index.html</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+          <execution>
+            <id>copy front-end assets to target</id>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <phase>prepare-package</phase>
+            <configuration>
+              <outputDirectory>${basedir}/target/classes/static</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>front-end/dist</directory>
+                  <excludes>
+                    <exclude>index.html</exclude>
+                  </excludes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <!-- 기본 라이프 사이클 외에도, 메이븐은 클린 라이프 사이클을 가진다.-->
+        <!-- 클린 플러그인에서는 골과 페이즈를 명시할 필요가 없다. 그저 무엇을 지울지 명시한다.-->
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.1.0</version>
+        <configuration>
+          <filesets>
+            <fileset>
+              <directory>${basedir}/src/main/resources/static/static</directory>
+            </fileset>
+            <fileset>
+              <directory>${basedir}/src/main/resources/templates</directory>
+              <includes>
+                <include>index.html</include>
+              </includes>
+            </fileset>
+          </filesets>
+        </configuration>
+      </plugin>
 		</plugins>
 	</build>
 
